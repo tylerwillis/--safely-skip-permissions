@@ -36,6 +36,9 @@ Permission Request
 - **on** — Opus screens every non-read tool call (~2s latency). Safe but slower.
 - **yolo** — Everything auto-approved instantly. Equivalent to `--dangerously-skip-permissions` but toggleable mid-session.
 
+**Always routed to the user regardless of mode** (never auto-approved — observed that Opus approval causes Claude to treat it as a blank answer, so we short-circuit these to the native dialog to be safe):
+- AskUserQuestion
+
 **Always auto-approved regardless of mode:**
 - Read-only tools: Read, Glob, Grep, WebSearch, WebFetch, TaskList, TaskGet, TaskOutput, TaskCreate, TaskUpdate, ListMcpResourcesTool, ReadMcpResourceTool, Skill, ToolSearch
 - Safe bash commands: `ls`, `cat`, `head`, `tail`, `wc`, `file`, `stat`, `du`, `df`, `pwd`, `which`, `whoami`, `date`, `uname`, `hostname`, `id`, `realpath`, `dirname`, `basename`, `echo`, `printf`, `rg`, `tree`, `diff`, `md5sum`, `shasum`
@@ -119,6 +122,15 @@ SAFE_TOOLS = {
     "ReadMcpResourceTool",
     "Skill",
     "ToolSearch",
+}
+
+# Tools that must always reach the user — hook emits no output so Claude Code
+# runs its native permission/answer dialog. Observed: when Opus approves
+# AskUserQuestion, Claude treats the approval as a blank answer. Unclear whether
+# any hook `allow` has the same effect; returning no output mirrors `off` mode,
+# which is known to work.
+ALWAYS_ASK_TOOLS = {
+    "AskUserQuestion",
 }
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -267,6 +279,11 @@ def main():
     params = json.dumps(data.get("tool_input", {}), indent=2)
 
     logging.info(f"tool={tool}")
+
+    # Always fall through to the user for these — never auto-approve
+    if tool in ALWAYS_ASK_TOOLS:
+        logging.info("always-ask tool — falling through to user")
+        return
 
     # Auto-approve read-only tools (always, regardless of mode)
     if tool in SAFE_TOOLS:
